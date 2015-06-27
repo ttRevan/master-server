@@ -30,19 +30,19 @@ proc queryMap(query: string): StringTableRef =
         result[key] = value
 
 
-proc handleRequest(client: Socket, path, query, ip: string, port, threshold: int): bool =
+proc handleRequest(client: Socket, path, query, ip: string, threshold: int): bool =
     var q = queryMap(query)
-    var serverKey = ip & $port
     if path == "/register":
+        var serverKey = ip & ":" & q["port"]
         var servers = getServers(q["type"])
         if servers.hasKey(serverKey):
             var server = servers[serverKey]
             server.timestamp = epochTime()
             server.name = q["name"]
-            echo("updating server: ", serverKey)
+            echo("updating server: '$1' at $2" % [q["name"], serverKey])
         else:
-            servers[serverKey] = newServerInfo(q["name"], ip, port, epochTime())
-            echo("registering server: ", serverKey)
+            servers[serverKey] = newServerInfo(q["name"], ip, parseInt(q["port"]), epochTime())
+            echo("registering server: '$1' at $2" % [q["name"], serverKey])
             client.send("registered " & serverKey)
     elif path == "/list":
         var servers = getServers(q["type"])
@@ -54,9 +54,11 @@ proc handleRequest(client: Socket, path, query, ip: string, port, threshold: int
             else:
                 oldKeys.add(key)
         for key in oldKeys:
-            echo("removing server: ", key)
+            echo("removing server: " & key)
             servers.del(key)
     elif path == "/unregister":
+        var serverKey = ip & ":" & q["port"]
+        echo("unregistering server: " & serverKey)
         getServers(q["type"]).del(serverKey)
         client.send("unregistered " & serverKey)
     return false
@@ -77,8 +79,7 @@ var s: TServer
 open(s, port, reuseAddr = true)
 while true:
     next(s)
-    var port = int(s.client.getSockName())
-    if handleRequest(s.client, s.path, s.query, s.ip, port, threshold):
+    if handleRequest(s.client, s.path, s.query, s.ip, threshold):
         break
     close(s.client)
 close(s)
