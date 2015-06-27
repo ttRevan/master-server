@@ -63,7 +63,7 @@ proc handleRequest(client: Socket, path, query, ip: string, port, threshold: int
 
 
 var port = Port(8080)
-var threshold = 10
+var threshold = 15
 for kind, key, val in getopt():
     case kind
     of cmdShortOption, cmdLongOption:
