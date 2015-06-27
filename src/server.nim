@@ -30,7 +30,7 @@ proc queryMap(query: string): StringTableRef =
         result[key] = value
 
 
-proc handleRequest(client: Socket, path, query, ip: string, port: int): bool =
+proc handleRequest(client: Socket, path, query, ip: string, port, threshold: int): bool =
     var q = queryMap(query)
     var serverKey = ip & $port
     if path == "/register":
@@ -63,18 +63,22 @@ proc handleRequest(client: Socket, path, query, ip: string, port: int): bool =
 
 
 var port = Port(8080)
+var threshold = 10
 for kind, key, val in getopt():
     case kind
     of cmdShortOption, cmdLongOption:
         if key == "p" or key == "port":
             port = Port(parseInt(val))
+        elif key == "t" or key == "threshold":
+            threshold = parseInt(val)
     else: discard
 
 var s: TServer
 open(s, port, reuseAddr = true)
 while true:
     next(s)
-    if handleRequest(s.client, s.path, s.query, s.ip, int(s.client.getSockName())):
+    var port = int(s.client.getSockName())
+    if handleRequest(s.client, s.path, s.query, s.ip, port, threshold):
         break
     close(s.client)
 close(s)
