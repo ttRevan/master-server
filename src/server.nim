@@ -1,4 +1,4 @@
-import httpserver, sockets, tables, strutils, strtabs, times
+import httpserver, sockets, tables, strutils, strtabs, times, parseopt2
 
 type
     ServerInfo = ref object of RootObj
@@ -62,8 +62,16 @@ proc handleRequest(client: Socket, path, query, ip: string, port: int): bool =
     return false
 
 
+var port = Port(8080)
+for kind, key, val in getopt():
+    case kind
+    of cmdShortOption, cmdLongOption:
+        if key == "p" or key == "port":
+            port = Port(parseInt(val))
+    else: discard
+
 var s: TServer
-open(s, Port(8080), reuseAddr = true)
+open(s, port, reuseAddr = true)
 while true:
     next(s)
     if handleRequest(s.client, s.path, s.query, s.ip, int(s.client.getSockName())):
