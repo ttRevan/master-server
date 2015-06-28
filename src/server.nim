@@ -78,6 +78,8 @@ proc handleRequest(client: Socket, path, query, ip: string, threshold: int): boo
 
 var port = Port(8090)
 var threshold = 15
+var localIpMapping: string
+
 for kind, key, val in getopt():
     case kind
     of cmdShortOption, cmdLongOption:
@@ -85,13 +87,18 @@ for kind, key, val in getopt():
             port = Port(parseInt(val))
         elif key == "t" or key == "threshold":
             threshold = parseInt(val)
+        elif key == "m" or key == "map-local":
+            localIpMapping = val
     else: discard
 
 var s: TServer
 open(s, port, reuseAddr = true)
 while true:
     next(s)
-    if handleRequest(s.client, s.path, s.query, s.ip, threshold):
+    var ip = s.ip
+    if ip == "127.0.0.1" and localIpMapping != nil:
+        ip = localIpMapping
+    if handleRequest(s.client, s.path, s.query, ip, threshold):
         break
     close(s.client)
 close(s)
