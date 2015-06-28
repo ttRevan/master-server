@@ -33,29 +33,32 @@ proc queryMap(query: string): StringTableRef =
 
 
 proc handleRequest(client: Socket, path, query, ip: string, threshold: int): bool =
+    client.send("HTTP/1.1 200 OK\n")
+    client.send("Content-Type: text/plain; charset=UTF-8\n")
     var q = queryMap(query)
+    var response = ""
     if path == "/register":
         var serverKey = q["guid"]
         var server = newServerInfo(serverKey, q["name"], ip, parseInt(q["port"]), epochTime())
         getServers(q["type"])[serverKey] = server
         serversByGuid[serverKey] = server
         echo("registering server: '$1' - $2" % [q["name"], serverKey])
-        client.send("registered")
+        response.add("registered")
     elif path == "/update":
         var serverKey = q["guid"]
         if not serversByGuid.hasKey(serverKey):
-            client.send("not registered")
+            response.add("not registered")
         else:
             serversByGuid[serverKey].timestamp = epochTime()
             echo("updating server $1" % [serverKey])
-            client.send("updated")
+            response.add("updated")
     elif path == "/list":
         var servers = getServers(q["type"])
         var oldKeys: seq[string] = @[]
-        client.send("servers_list\n")
+        response.add("servers_list\n")
         for key, server in servers.pairs:
             if (epochTime() - server.timestamp) <= 10:
-                client.send("$1,$2,$3,$4\n" %
+                response.add("$1,$2,$3,$4\n" %
                     [server.guid, server.name, server.ip, $server.port])
             else: oldKeys.add(key)
         for key in oldKeys:
@@ -67,7 +70,9 @@ proc handleRequest(client: Socket, path, query, ip: string, threshold: int): boo
         echo("unregistering server: " & serverKey)
         getServers(q["type"]).del(serverKey)
         serversByGuid.del(serverKey)
-        client.send("unregistered")
+        response.add("unregistered")
+    client.send("Content-Length: " & $len(response) & "\n\n")
+    client.send(response)
     return false
 
 
