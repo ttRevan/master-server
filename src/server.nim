@@ -2,18 +2,20 @@ import httpserver, sockets, tables, strutils, strtabs, times, parseopt2
 
 type
     ServerInfo = ref object of RootObj
-        name, ip: string
+        guid, name, ip: string
         port: int
         timestamp: float
 
-proc newServerInfo(name, ip: string, port: int, timestamp: float): ServerInfo =
+proc newServerInfo(guid, name, ip: string, port: int, timestamp: float): ServerInfo =
     new(result)
+    result.guid = guid
     result.name = name
     result.ip = ip
     result.port = port
     result.timestamp = timestamp
 
 var db = initTable[string, TableRef[string, ServerInfo]]()
+var serversByGuid = initTable[string, ServerInfo]()
 
 proc getServers(key: string): TableRef[string, ServerInfo] =
     result = db[key]
@@ -33,38 +35,43 @@ proc queryMap(query: string): StringTableRef =
 proc handleRequest(client: Socket, path, query, ip: string, threshold: int): bool =
     var q = queryMap(query)
     if path == "/register":
-        var serverKey = ip & ":" & q["port"]
-        var servers = getServers(q["type"])
-        if servers.hasKey(serverKey):
-            var server = servers[serverKey]
-            server.timestamp = epochTime()
-            server.name = q["name"]
-            echo("updating server: '$1' at $2" % [q["name"], serverKey])
+        var serverKey = q["guid"]
+        var server = newServerInfo(serverKey, q["name"], ip, parseInt(q["port"]), epochTime())
+        getServers(q["type"])[serverKey] = server
+        serversByGuid[serverKey] = server
+        echo("registering server: '$1' - $2" % [q["name"], serverKey])
+        client.send("registered")
+    elif path == "/update":
+        var serverKey = q["guid"]
+        if not serversByGuid.hasKey(serverKey):
+            client.send("not registered")
         else:
-            servers[serverKey] = newServerInfo(q["name"], ip, parseInt(q["port"]), epochTime())
-            echo("registering server: '$1' at $2" % [q["name"], serverKey])
-            client.send("registered " & serverKey)
+            serversByGuid[serverKey].timestamp = epochTime()
+            echo("updating server $1" % [serverKey])
+            client.send("updated")
     elif path == "/list":
         var servers = getServers(q["type"])
         var oldKeys: seq[string] = @[]
         client.send("servers_list\n")
         for key, server in servers.pairs:
             if (epochTime() - server.timestamp) <= 10:
-                client.send("$1,$2,$3\n" % [server.name, server.ip, $server.port])
-            else:
-                oldKeys.add(key)
+                client.send("$1,$2,$3,$4\n" %
+                    [server.guid, server.name, server.ip, $server.port])
+            else: oldKeys.add(key)
         for key in oldKeys:
             echo("removing server: " & key)
             servers.del(key)
+            serversByGuid.del(key)
     elif path == "/unregister":
-        var serverKey = ip & ":" & q["port"]
+        var serverKey = q["guid"]
         echo("unregistering server: " & serverKey)
         getServers(q["type"]).del(serverKey)
-        client.send("unregistered " & serverKey)
+        serversByGuid.del(serverKey)
+        client.send("unregistered")
     return false
 
 
-var port = Port(8080)
+var port = Port(8090)
 var threshold = 15
 for kind, key, val in getopt():
     case kind
